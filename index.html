@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TRANSUMLINE - Cek Rute Angkot Cimahi</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-dark': '#5C7456',   // Hijau Tua
+                        'brand-light': '#A2B79A',  // Hijau Muda
+                        'brand-btn': '#3C5236',
+                        'brand-btn-hover': '#2A3C25'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            margin: 0;
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(60, 82, 54, 0.4); border-radius: 10px; }
+        
+        /* Screen Transitions */
+        .screen {
+            position: absolute; inset: 0;
+            width: 100%; height: 100%;
+            overflow-y: auto; overflow-x: hidden;
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        
+        #map { height: 100%; width: 100%; z-index: 1; }
+        
+        /* Leaflet popup styling override */
+        .leaflet-popup-content-wrapper {
+            background: #A2B79A; color: #111827;
+            font-weight: 700; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        .leaflet-popup-tip { background: #A2B79A; }
+
+        /* Loader Animation */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid white;
+            width: 40px; height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Hide Scrollbar for Horizontal Scroll */
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        select { -webkit-appearance: none; appearance: none; }
+
+        /* Combobox (ketik & pilih titik) */
+        .cb-list { overscroll-behavior: contain; }
+        .cb-list li[aria-selected="true"] { background: rgba(162, 183, 154, 0.55); }
+
+        /* Modal gambar angkot */
+        @keyframes modal-pop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+        .modal-pop { animation: modal-pop 0.2s ease-out; }
+        @media (prefers-reduced-motion: reduce) { .modal-pop { animation: none; } }
+    </style>
+</head>
+<body class="bg-brand-dark min-h-screen">
+
+    <!-- Responsive Layout Wrapper (Full Screen) -->
+    <div class="relative w-full h-[100dvh] overflow-hidden bg-brand-dark">
+
+        <!-- ================= SCREEN 1: LOADSCREEN ================= -->
+        <div id="screen-loader" class="screen bg-brand-dark flex flex-col items-center justify-center z-50">
+            <h1 class="text-4xl md:text-6xl font-extrabold text-white tracking-widest mb-2 drop-shadow-md">TRANSUMLINE</h1>
+            <p class="text-brand-light font-semibold mb-8 md:text-xl">Angkutan Umum Kota Cimahi</p>
+            <div class="spinner md:w-16 md:h-16"></div>
+            <div class="absolute bottom-10 text-xs text-white/50 tracking-wider">Copyright By Ideation Team</div>
+        </div>
+
+        <!-- ================= SCREEN 2: SEARCH ================= -->
+        <div id="screen-search" class="screen bg-brand-dark flex flex-col justify-center items-center p-6 z-40 opacity-0 pointer-events-none hidden">
+            <div class="w-full text-brand-light text-sm md:text-base font-bold tracking-wide mb-4 text-center">Selection Destination</div>
+            
+            <h2 class="text-3xl md:text-5xl font-extrabold text-white mb-8 drop-shadow-md text-center">Cek Rute</h2>
+            
+            <!-- Box Pencarian (Dibatasi lebarnya di desktop) -->
+            <div class="bg-brand-light w-full max-w-2xl rounded-[2rem] p-6 md:p-10 shadow-2xl border border-white/20">
+                <label class="block text-[#2A3C25] font-bold text-sm md:text-base mb-2 ml-1">Pilih Titik Awal</label>
+                <div id="startSelect1" class="mb-5"></div>
+
+                <label class="block text-[#2A3C25] font-bold text-sm md:text-base mb-2 ml-1">Pilih Titik Tujuan</label>
+                <div id="destSelect1" class="mb-8"></div>
+                
+                <button onclick="processSearch(1)" class="w-full bg-brand-btn hover:bg-brand-btn-hover text-white font-bold py-4 md:py-5 rounded-2xl transition shadow-lg active:scale-[0.98] text-lg md:text-xl">
+                    Cari Angkot
+                </button>
+            </div>
+
+            <!-- Error Message Container Screen 1 -->
+            <div id="errorText1" class="mt-6 bg-red-500/90 text-white px-5 py-3 rounded-xl font-semibold text-center opacity-0 transition-opacity shadow-lg max-w-md pointer-events-none">
+                Rute tidak ditemukan.
+            </div>
+        </div>
+
+        <!-- ================= SCREEN 3: ROUTE RESULTS ================= -->
+        <div id="screen-result" class="screen bg-brand-dark flex flex-col z-30 opacity-0 pointer-events-none hidden">
+            
+            <!-- Sticky Header -->
+            <div class="sticky top-0 bg-brand-dark/90 backdrop-blur-lg z-50 flex items-center px-4 py-4 shadow-md">
+                <button onclick="goBackToSearch()" class="text-white hover:bg-white/20 p-2 rounded-full transition active:scale-90">
+                    <svg class="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <div class="text-white text-xl md:text-2xl font-bold flex-grow text-center pr-10 tracking-wide">
+                    Detail Perjalanan
+                </div>
+            </div>
+
+            <!-- Scrollable Content Area (Grid Desktop / Stack Mobile) -->
+            <div class="p-4 md:p-8 flex-grow pb-10 w-full max-w-7xl mx-auto">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8">
+                    
+                    <!-- KOLOM KIRI (Untuk Peta & Detail Rute) -->
+                    <div class="lg:col-span-2 flex flex-col gap-5 md:gap-8">
+                        <!-- 1. Map Card -->
+                        <div class="w-full h-[35vh] lg:h-[50vh] min-h-[250px] bg-gray-200 rounded-[2rem] overflow-hidden shadow-2xl border-[5px] border-brand-light relative z-0">
+                            <div id="map"></div>
+                        </div>
+
+                        <!-- 3. Route Textual Details -->
+                        <div class="bg-brand-light w-full rounded-[2rem] p-5 md:p-7 shadow-xl h-fit">
+                            <h3 class="text-brand-dark font-black text-xl md:text-2xl mb-4 flex items-center gap-2 border-b-2 border-brand-dark/20 pb-2">
+                                <svg class="w-6 h-6 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+                                Detail Rute
+                            </h3>
+                            <div id="routeDetailsContent" class="text-gray-900 bg-white/60 p-5 rounded-2xl text-sm md:text-base font-medium leading-relaxed shadow-inner">
+                                <!-- Content Injected via JS -->
+                            </div>
+                        </div>
+
+                        <!-- 4. Visual Angkot -->
+                        <div class="bg-brand-light w-full rounded-[2rem] p-5 md:p-7 shadow-xl">
+                            <h3 class="text-brand-dark font-black text-xl md:text-2xl mb-4 text-center border-b-2 border-brand-dark/20 pb-2">Visual Angkot</h3>
+                            <div id="angkotVisuals" class="flex flex-row overflow-x-auto gap-4 items-center p-2 snap-x hide-scrollbar">
+                                <!-- Content Injected via JS -->
+                            </div>
+                            <p class="text-center text-xs font-semibold text-brand-dark mt-2">Ketuk gambar untuk memperbesar</p>
+                        </div>
+                    </div>
+
+                    <!-- KOLOM KANAN (Untuk Perkiraan Tarif & Update Rute) -->
+                    <div class="flex flex-col gap-5 md:gap-8">
+                        <!-- 5. Fare Estimate -->
+                        <div class="bg-brand-light w-full rounded-[2rem] p-6 shadow-xl flex flex-col items-center justify-center text-center">
+                            <h3 class="text-brand-dark font-black text-lg md:text-xl mb-1">Perkiraan Tarif</h3>
+                            <div id="fareEstimate" class="text-5xl md:text-6xl font-black text-white drop-shadow-lg tracking-tight my-2">Rp 0</div>
+                            <div id="fareDetailText" class="text-sm md:text-base font-bold text-brand-dark bg-white/40 px-4 py-1.5 rounded-full mt-2 inline-block shadow-sm">
+                                0 Angkot
+                            </div>
+                        </div>
+
+                        <!-- 2. Quick Update Card -->
+                        <div class="bg-brand-light w-full rounded-[2rem] p-5 md:p-6 shadow-xl flex flex-col gap-3 h-fit sticky top-24">
+                            <div class="text-[#2A3C25] font-extrabold text-sm md:text-base ml-1 text-center mb-1">Ubah Rute Cepat</div>
+                            <div class="flex flex-col gap-2 relative">
+                                <div id="startSelect2"></div>
+                                
+                                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-brand-btn text-white w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center shadow-md border-2 border-brand-light z-10 pointer-events-none">
+                                    <svg class="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                                </div>
+                                
+                                <div id="destSelect2"></div>
+                            </div>
+                            <button onclick="processSearch(2)" class="w-full bg-brand-btn hover:bg-brand-btn-hover text-white text-sm md:text-base font-bold py-3 md:py-4 mt-2 rounded-xl active:scale-[0.98] transition shadow-md">
+                                Update Pencarian
+                            </button>
+                            <!-- Error Message for Screen 2 -->
+                            <div id="errorText2" class="text-red-900 bg-red-200 px-3 py-2 rounded-lg text-xs font-bold text-center hidden mt-2"></div>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MODAL: GAMBAR ANGKOT ================= -->
+    <div id="imageModal" class="fixed inset-0 z-[9999] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="imageModalTitle" onclick="if(event.target===this) closeImageModal()">
+        <div class="modal-pop relative w-full max-w-4xl flex flex-col max-h-full">
+            <div class="flex items-start justify-between gap-3 mb-3 text-white">
+                <div class="min-w-0">
+                    <div id="imageModalLabel" class="text-xs font-bold text-brand-light"></div>
+                    <div id="imageModalTitle" class="text-lg md:text-2xl font-extrabold leading-tight"></div>
+                    <div id="imageModalSub" class="text-xs md:text-sm text-white/70 mt-0.5"></div>
+                </div>
+                <button type="button" onclick="closeImageModal()" aria-label="Tutup" class="flex-none bg-white/15 hover:bg-white/30 rounded-full p-2 transition active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="relative bg-black/40 rounded-2xl overflow-hidden flex items-center justify-center min-h-0">
+                <img id="imageModalImg" src="" alt="" class="max-w-full max-h-[75vh] object-contain">
+                <div id="imageModalFallback" class="hidden w-full h-[50vh] items-center justify-center text-center text-white font-black text-xl px-6" style="text-shadow:0 1px 3px rgba(0,0,0,0.7)"></div>
+                <button id="imageModalPrev" type="button" onclick="stepImageModal(-1)" aria-label="Angkot sebelumnya" class="hidden absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition active:scale-90">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <button id="imageModalNext" type="button" onclick="stepImageModal(1)" aria-label="Angkot berikutnya" class="hidden absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition active:scale-90">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script tetap sama, dibiarkan identik dengan fungsi aslinya -->
+    <script>
+        // --- 1. DATA KUMPULAN TRAYEK (16 Rute Spesifik) ---
+        const rawTrayekData = [
+            { id: "A1", name: "Cimahi – Cibeber", color: "Kuning", colorHex: "#EAB308", image: "img/cimahi-cibeber.jpg", path: "Terminal Pasar Antri, Cimahi Mall, Pojok, Gang Asem, Tagog, Gatot Subroto, Baros, Leuwigajah, Cibeber" },
+            { id: "A2", name: "Cimahi – Ciseupan via Contong", color: "Oranye", colorHex: "#F97316", image: "img/cimahi-ciseupan.jpg", path: "Terminal Pasar Antri, Stasiun Cimahi, Dustira, Contong, Lapangan Tembak, Unjani, Ciseupan" },
+            { id: "A3", name: "Cimahi – Cimindi", color: "Biru Tua", colorHex: "#1E3A8A", image: "img/cimahi-cimindi.jpg", path: "Terminal Pasar Antri, Cimahi Mall, Pojok, Gang Asem, Tagog, Gatot Subroto, Baros, Leuwigajah, Terminal Cimindi" },
+            { id: "A4", name: "Cimahi – Padalarang", color: "Oranye", colorHex: "#F97316", image: "img/cimahi-padalarang.jpg", path: "Terminal Pasar Antri, Cimahi Mall, Pojok, Cisangkan, Padasuka, Gadobangkong, Cimareme, Pasar Padalarang, Stasiun Padalarang" },
+            { id: "A5", name: "Cimahi – Leuwipanjang", color: "Hijau Jingga", colorHex: "#84CC16", image: "img/cimahi-leuwipanjang.jpg", path: "Terminal Pasar Antri, Pojok, Gatot Subroto, Terminal Pasar Atas, Tagog, Cibabat, Terminal Cimindi, Cibeureum, Rajawali, Soekarno-Hatta, Pasar Caringin, Perempatan Kopo, Leuwipanjang" },
+            { id: "A6", name: "Cimahi – St. Hall Bandung", color: "Hijau", colorHex: "#22C55E", image: "img/cimahi-sthall.jpg", path: "Terminal Pasar Antri, Tagog, Terminal Pasar Atas, Cibabat, Terminal Cimindi, Cibeureum, Rajawali, Ciroyom, Pajajaran, Cicendo, Stasiun Bandung" },
+            { id: "A7", name: "Cimahi – Cisarua", color: "Kuning", colorHex: "#EAB308", image: "img/cimahi-cisarua.jpg", path: "Terminal Pasar Atas, Kolonel Masturi, Jambudipa, SPN Cisarua, Curug Cimahi" },
+            { id: "A8", name: "Cimahi – Parongpong", color: "Ungu", colorHex: "#9333EA", image: "img/cimahi-parongpong.jpg", path: "Terminal Pasar Antri, Gatot Subroto, Tagog, Cihanjuang, Cibaligo, Parongpong" },
+            { id: "A9", name: "Cimahi – Soreang", color: "Hijau", colorHex: "#22C55E", image: "img/cimahi-soreang.jpg", path: "Terminal Pasar Antri, Stasiun Cimahi, Baros, Leuwigajah, Nanjung, Lagadar, Margaasih, Cipatik, Soreang" },
+            { id: "A10", name: "Cimindi – Soreang", color: "Hijau", colorHex: "#22C55E", image: "img/cimindi-soreang.jpg", path: "Terminal Cimindi, Leuwigajah, Nanjung, Lagadar, Margaasih, Cipatik, Soreang" },
+            { id: "A11", name: "Cimahi – Batujajar", color: "Hijau", colorHex: "#22C55E", image: "img/cimahi-batujajar.jpg", path: "Terminal Pasar Antri, Cimahi Mall, Pojok, Padasuka, Gadobangkong, Cimareme, Ciampel, Cangkorah, Batujajar" },
+            { id: "A12", name: "Cimahi – Ledeng", color: "Hijau", colorHex: "#22C55E", image: "img/cimahi-ledeng.jpg", path: "Terminal Pasar Antri, Gatot Subroto, Tagog, Cihanjuang, Sukawargi, Ciwaruga, Gegerkalong, Ledeng" },
+            { id: "A13", name: "Pasar Atas – Cilame", color: "Biru", colorHex: "#3B82F6", image: "img/pasaratas-cilame.jpg", path: "Terminal Pasar Atas, Kolonel Masturi, Puri Cipageran, Tani Mulya, Permata, Cilame" },
+            { id: "A14", name: "Pasar Atas – Cidahu", color: "Kuning", colorHex: "#EAB308", image: "img/pasaratas-cidahu.jpg", path: "Terminal Pasar Atas, Kolonel Masturi, Perempatan Citeureup, Cidahu" },
+            { id: "A15", name: "Cimindi – Cihapit", color: "Kuning", colorHex: "#EAB308", image: "img/cimindi-cihapit.jpg", path: "Terminal Cimindi, Leuwigajah, Kerkhof, Cihapit, Cangkorah" },
+            { id: "A16", name: "Cimindi – Marga Asih via Kebon Kopi", color: "Biru Muda", colorHex: "#38BDF8", image: "img/cimindi-margaasih.jpg", path: "Terminal Cimindi, Jalan Industri, Pharmindo, Margaasih" }
+        ];
+
+        let routes = [];
+        let allStops = new Set();
+
+        rawTrayekData.forEach(rt => {
+            const stopsArray = rt.path.split(',').map(s => s.trim());
+            routes.push({ ...rt, stops: stopsArray });
+            stopsArray.forEach(stop => allStops.add(stop));
+        });
+
+        const sortedStops = Array.from(allStops).sort();
+
+        // --- 2. KOORDINAT MAP ASLI ---
+        const coordinateMap = {
+            "Terminal Pasar Antri": [-6.880587633612607, 107.53812545892649],
+            "Cimahi Mall": [-6.878454620681466, 107.5394788136182],
+            "Pojok": [-6.871800480658334, 107.53900623594362],
+            "Gang Asem": [-6.87415773168334, 107.54111239257048],
+            "Tagog": [-6.875958249844658, 107.5461316669466],
+            "Gatot Subroto": [-6.876636992899528, 107.54562008389286],
+            "Baros": [-6.8833, 107.5375],
+            "Leuwigajah": [-6.8950, 107.5340],
+            "Cibeber": [-6.9100, 107.5335],
+            "Stasiun Cimahi": [-6.8858, 107.5361],
+            "Dustira": [-6.8872, 107.5350],
+            "Contong": [-6.8905, 107.5380],
+            "Lapangan Tembak": [-6.8950, 107.5405],
+            "Unjani": [-6.8988, 107.5430],
+            "Ciseupan": [-6.9055, 107.5415],
+            "Terminal Cimindi": [-6.8901, 107.5615],
+            "Cisangkan": [-6.8685, 107.5345],
+            "Padasuka": [-6.8635, 107.5280],
+            "Gadobangkong": [-6.8585, 107.5185],
+            "Cimareme": [-6.8510, 107.5020],
+            "Pasar Padalarang": [-6.8405, 107.4785],
+            "Stasiun Padalarang": [-6.8425, 107.4760],
+            "Terminal Pasar Atas": [-6.8690, 107.5432],
+            "Cibabat": [-6.8805, 107.5550],
+            "Cibeureum": [-6.8985, 107.5680],
+            "Rajawali": [-6.9110, 107.5750],
+            "Soekarno-Hatta": [-6.9350, 107.5850],
+            "Pasar Caringin": [-6.9385, 107.5800],
+            "Perempatan Kopo": [-6.9420, 107.5910],
+            "Leuwipanjang": [-6.9450, 107.5950],
+            "Ciroyom": [-6.9125, 107.5850],
+            "Pajajaran": [-6.9080, 107.5900],
+            "Cicendo": [-6.9100, 107.5975],
+            "Stasiun Bandung": [-6.9128, 107.6015],
+            "Kolonel Masturi": [-6.8490, 107.5505],
+            "Jambudipa": [-6.8320, 107.5550],
+            "SPN Cisarua": [-6.8150, 107.5580],
+            "Curug Cimahi": [-6.7975, 107.5780],
+            "Cihanjuang": [-6.8550, 107.5630],
+            "Cibaligo": [-6.8450, 107.5700],
+            "Parongpong": [-6.8150, 107.5850],
+            "Nanjung": [-6.9150, 107.5310],
+            "Lagadar": [-6.9310, 107.5300],
+            "Margaasih": [-6.9420, 107.5450],
+            "Cipatik": [-6.9650, 107.5300],
+            "Soreang": [-7.0300, 107.5300],
+            "Ciampel": [-6.8650, 107.4950],
+            "Cangkorah": [-6.8850, 107.4850],
+            "Batujajar": [-6.9000, 107.4750],
+            "Sukawargi": [-6.8450, 107.5780],
+            "Ciwaruga": [-6.8350, 107.5850],
+            "Gegerkalong": [-6.8650, 107.5920],
+            "Ledeng": [-6.8610, 107.5960],
+            "Puri Cipageran": [-6.8550, 107.5350],
+            "Tani Mulya": [-6.8500, 107.5250],
+            "Permata": [-6.8450, 107.5150],
+            "Cilame": [-6.8350, 107.5050],
+            "Perempatan Citeureup": [-6.8600, 107.5450],
+            "Cidahu": [-6.8550, 107.5550],
+            "Kerkhof": [-6.8920, 107.5310],
+            "Cihapit": [-6.8950, 107.5050],
+            "Jalan Industri": [-6.8950, 107.5550],
+            "Pharmindo": [-6.9050, 107.5500]
+        };
+
+        function getMockCoord(name) {
+            if (coordinateMap[name]) return coordinateMap[name];
+            const baseLat = -6.8724;
+            const baseLng = 107.5451;
+            let hash = 0;
+            for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+            let latOffset = ((hash % 100) - 50) / 1500; 
+            let lngOffset = (((hash >> 3) % 100) - 50) / 1500; 
+            return [baseLat + latOffset, baseLng + lngOffset];
+        }
+
+        // --- 2b. FILTER TITIK YANG TERHUBUNG + COMBOBOX KETIK/PILIH ---
+        // Titik yang bisa dicapai dari sebuah titik (maks. 4 angkot, sama dengan batas findShortestRoute).
+        const reachCache = {};
+        function reachableFrom(stop) {
+            if (reachCache[stop]) return reachCache[stop];
+            const reach = new Set();
+            const seen = new Set();
+            let frontier = routes.filter(r => r.stops.includes(stop));
+            frontier.forEach(r => seen.add(r.id));
+            for (let depth = 1; depth <= 4 && frontier.length; depth++) {
+                const next = [];
+                frontier.forEach(r => {
+                    r.stops.forEach(st => reach.add(st));
+                    routes.forEach(o => {
+                        if (!seen.has(o.id) && o.stops.some(st => r.stops.includes(st))) {
+                            seen.add(o.id);
+                            next.push(o);
+                        }
+                    });
+                });
+                frontier = next;
+            }
+            reach.delete(stop);
+            return (reachCache[stop] = reach);
+        }
+
+        // Daftar pilihan untuk sebuah kolom, berdasarkan nilai kolom pasangannya.
+        function optionsFor(otherValue) {
+            if (!otherValue) return { list: sortedStops, hint: '' };
+            const reach = reachableFrom(otherValue);
+            return {
+                list: sortedStops.filter(st => reach.has(st)),
+                hint: `Hanya titik yang terhubung dengan ${otherValue}`
+            };
+        }
+
+        const escHtml = t => t.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const escRegex = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        const CB_SIZES = {
+            lg: 'rounded-2xl p-4 md:p-5 pr-12 font-semibold shadow-inner focus:ring-4 focus:ring-brand-btn/30',
+            sm: 'text-sm md:text-base rounded-xl p-3 md:p-4 pr-10 font-bold shadow-sm focus:ring-2 focus:ring-brand-btn'
+        };
+        const CB_ICON_CHEVRON = '<svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>';
+        const CB_ICON_CLEAR = '<svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>';
+        let cbCounter = 0;
+
+        class Combobox {
+            constructor(root, { placeholder, size = 'lg', getOptions, onSelect }) {
+                this.getOptions = getOptions;
+                this.onSelect = onSelect || (() => {});
+                this._value = '';
+                this.items = [];
+                this.active = -1;
+                this.isOpen = false;
+                const id = 'cb' + (++cbCounter);
+
+                root.classList.add('relative');
+                root.innerHTML = `
+                    <input type="text" id="${id}-input" role="combobox" aria-expanded="false" aria-controls="${id}-list" aria-autocomplete="list"
+                           autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${placeholder}"
+                           class="w-full bg-white/90 text-gray-800 outline-none transition truncate placeholder:text-gray-400 placeholder:font-medium ${CB_SIZES[size]}">
+                    <button type="button" tabindex="-1" aria-label="Hapus pilihan"
+                            class="absolute inset-y-0 right-0 flex items-center px-3 md:px-4 text-brand-dark"></button>
+                    <ul id="${id}-list" role="listbox" class="cb-list hidden absolute left-0 right-0 top-full mt-2 max-h-60 overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 py-1 z-40"></ul>`;
+                this.root = root;
+                this.input = root.querySelector('input');
+                this.btn = root.querySelector('button');
+                this.list = root.querySelector('ul');
+                this.updateIcon();
+
+                this.input.addEventListener('focus', () => { this.input.select(); this.open(''); });
+                this.input.addEventListener('click', () => { if (!this.isOpen) this.open(''); });
+                this.input.addEventListener('input', () => this.open(this.input.value.trim()));
+                this.input.addEventListener('blur', () => this.close());
+                this.input.addEventListener('keydown', e => this.onKey(e));
+                // mousedown + preventDefault agar input tidak kehilangan fokus sebelum item terpilih
+                this.list.addEventListener('mousedown', e => {
+                    e.preventDefault();
+                    const li = e.target.closest('li[data-value]');
+                    if (li) this.choose(li.dataset.value);
+                });
+                this.btn.addEventListener('mousedown', e => e.preventDefault());
+                this.btn.addEventListener('click', () => {
+                    if (this._value) { this.clear(); this.input.focus(); }
+                    else if (this.isOpen) this.close();
+                    else this.input.focus();
+                });
+            }
+
+            get value() { return this._value; }
+            set value(v) {
+                this._value = v || '';
+                this.input.value = this._value;
+                this.updateIcon();
+            }
+
+            clear() {
+                this.value = '';
+                this.onSelect('');
+                this.open('');
+            }
+
+            updateIcon() {
+                this.btn.innerHTML = this._value ? CB_ICON_CLEAR : CB_ICON_CHEVRON;
+                this.btn.setAttribute('aria-label', this._value ? 'Hapus pilihan' : 'Buka daftar');
+            }
+
+            open(query) {
+                const { list, hint } = this.getOptions();
+                const q = query.toLowerCase();
+                let items = list;
+                if (q) {
+                    const score = name => { const n = name.toLowerCase(); return n.startsWith(q) ? 0 : n.includes(' ' + q) ? 1 : 2; };
+                    items = list.filter(n => n.toLowerCase().includes(q))
+                                .sort((a, b) => score(a) - score(b) || a.localeCompare(b));
+                }
+                this.items = items;
+                this.active = q ? (items.length ? 0 : -1) : items.indexOf(this._value);
+
+                const re = q ? new RegExp(escRegex(query), 'ig') : null;
+                let html = hint ? `<li class="px-4 py-2 text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-100 pointer-events-none">${escHtml(hint)}</li>` : '';
+                if (!items.length) {
+                    html += `<li class="px-4 py-3 text-sm text-gray-500 pointer-events-none">Titik tidak ditemukan</li>`;
+                } else {
+                    html += items.map((name, i) => {
+                        const label = re ? escHtml(name).replace(re, m => `<b class="text-brand-btn">${m}</b>`) : escHtml(name);
+                        return `<li role="option" id="${this.input.id}-opt${i}" data-value="${escHtml(name)}" data-index="${i}" aria-selected="${i === this.active}"
+                                    class="px-4 py-2.5 cursor-pointer text-gray-800 text-sm md:text-base ${name === this._value ? 'font-extrabold' : 'font-semibold'}">${label}</li>`;
+                    }).join('');
+                }
+                this.list.innerHTML = html;
+                this.list.classList.remove('hidden');
+                this.root.classList.add('z-30');
+                this.isOpen = true;
+                this.input.setAttribute('aria-expanded', 'true');
+                this.scrollToActive();
+                this.list.scrollIntoView({ block: 'nearest' });
+            }
+
+            close() {
+                if (!this.isOpen) return;
+                this.isOpen = false;
+                this.list.classList.add('hidden');
+                this.root.classList.remove('z-30');
+                this.input.setAttribute('aria-expanded', 'false');
+                this.input.value = this._value; // kembalikan teks ke pilihan terakhir
+            }
+
+            move(delta) {
+                if (!this.items.length) return;
+                this.active = (this.active + delta + this.items.length) % this.items.length;
+                this.list.querySelectorAll('li[role="option"]').forEach(li => li.setAttribute('aria-selected', li.dataset.index == this.active));
+                this.scrollToActive();
+            }
+
+            scrollToActive() {
+                const li = this.list.querySelector(`li[data-index="${this.active}"]`);
+                if (li) li.scrollIntoView({ block: 'nearest' });
+            }
+
+            onKey(e) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (!this.isOpen) this.open(''); else this.move(e.key === 'ArrowDown' ? 1 : -1);
+                } else if (e.key === 'Enter') {
+                    if (this.isOpen && this.active >= 0) { e.preventDefault(); this.choose(this.items[this.active]); }
+                } else if (e.key === 'Escape') {
+                    this.close();
+                }
+            }
+
+            choose(name) {
+                this.value = name;
+                this.close();
+                this.input.blur();
+                this.onSelect(name);
+            }
+        }
+
+        // Buat sepasang kolom awal/tujuan yang saling memfilter.
+        function createPair(startEl, destEl, size) {
+            const pair = {};
+            pair.start = new Combobox(startEl, {
+                placeholder: 'Ketik atau pilih titik awal...', size,
+                getOptions: () => optionsFor(pair.dest.value),
+                onSelect: v => { if (v && pair.dest.value && !reachableFrom(v).has(pair.dest.value)) pair.dest.value = ''; }
+            });
+            pair.dest = new Combobox(destEl, {
+                placeholder: 'Ketik atau pilih tujuan...', size,
+                getOptions: () => optionsFor(pair.start.value),
+                onSelect: v => { if (v && pair.start.value && !reachableFrom(v).has(pair.start.value)) pair.start.value = ''; }
+            });
+            return pair;
+        }
+
+        // --- 3. INISIALISASI UI ---
+        const ui = {
+            screenLoader: document.getElementById('screen-loader'),
+            screenSearch: document.getElementById('screen-search'),
+            screenResult: document.getElementById('screen-result'),
+            err1: document.getElementById('errorText1'),
+            err2: document.getElementById('errorText2')
+        };
+
+        const pair1 = createPair(document.getElementById('startSelect1'), document.getElementById('destSelect1'), 'lg');
+        const pair2 = createPair(document.getElementById('startSelect2'), document.getElementById('destSelect2'), 'sm');
+        ui.s1Start = pair1.start; ui.s1Dest = pair1.dest;
+        ui.s2Start = pair2.start; ui.s2Dest = pair2.dest;
+
+        window.onload = () => {
+            setTimeout(() => switchScreen(ui.screenLoader, ui.screenSearch), 2000);
+        };
+
+        function switchScreen(hideElem, showElem) {
+            hideElem.classList.remove('opacity-100', 'pointer-events-auto');
+            hideElem.classList.add('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                hideElem.classList.add('hidden');
+                showElem.classList.remove('hidden');
+                void showElem.offsetWidth;
+                showElem.classList.remove('opacity-0', 'pointer-events-none');
+                showElem.classList.add('opacity-100', 'pointer-events-auto');
+                
+                // Jika membuka result screen, paksa Leaflet update size
+                if (showElem === ui.screenResult && mapInstance) {
+                    setTimeout(() => mapInstance.invalidateSize(), 300);
+                }
+            }, 400);
+        }
+
+        function goBackToSearch() {
+            switchScreen(ui.screenResult, ui.screenSearch);
+            ui.err1.classList.add('opacity-0');
+        }
+
+        // --- 4. ALGORITMA PENCARIAN RUTE ---
+        function getSubPath(arr, from, to) {
+            let i1 = arr.indexOf(from);
+            let i2 = arr.indexOf(to);
+            if (i1 === -1 || i2 === -1) return [];
+            let start = Math.min(i1, i2);
+            let end = Math.max(i1, i2);
+            let path = arr.slice(start, end + 1);
+            if (i1 > i2) path.reverse();
+            return path;
+        }
+
+        function findShortestRoute(start, end) {
+            if (start === end) return { error: "Titik Awal dan Tujuan tidak boleh sama." };
+            let queue = []; 
+            routes.forEach(r => {
+                if (r.stops.includes(start)) queue.push({ routes: [r], stops: [start] });
+            });
+            let visitedRoutesSets = new Set();
+
+            while (queue.length > 0) {
+                let current = queue.shift();
+                let lastRoute = current.routes[current.routes.length - 1];
+                if (lastRoute.stops.includes(end)) {
+                    current.stops.push(end);
+                    return buildLegs(current);
+                }
+                if (current.routes.length >= 4) continue;
+                let pathSignature = current.routes.map(r=>r.id).join('-');
+                if (visitedRoutesSets.has(pathSignature)) continue;
+                visitedRoutesSets.add(pathSignature);
+
+                for (let nextRoute of routes) {
+                    if (!current.routes.find(r => r.id === nextRoute.id)) {
+                        let intersection = lastRoute.stops.find(s => nextRoute.stops.includes(s));
+                        if (intersection) {
+                            queue.push({
+                                routes: [...current.routes, nextRoute],
+                                stops: [...current.stops, intersection]
+                            });
+                        }
+                    }
+                }
+            }
+            return { error: "Maaf, belum ada jalur angkot yang terhubung antara kedua titik tersebut." };
+        }
+
+        function buildLegs(resultSequence) {
+            let legs = [];
+            for (let i = 0; i < resultSequence.routes.length; i++) {
+                let route = resultSequence.routes[i];
+                let fromStop = resultSequence.stops[i];
+                let toStop = resultSequence.stops[i+1];
+                legs.push({
+                    route: route,
+                    from: fromStop,
+                    to: toStop,
+                    path: getSubPath(route.stops, fromStop, toStop)
+                });
+            }
+            return { legs: legs, fare: legs.length * 5000 };
+        }
+
+        // --- 5. LOGIKA UI ---
+        function processSearch(sourceScreen) {
+            let start = sourceScreen === 1 ? ui.s1Start.value : ui.s2Start.value;
+            let dest = sourceScreen === 1 ? ui.s1Dest.value : ui.s2Dest.value;
+            let errElem = sourceScreen === 1 ? ui.err1 : ui.err2;
+
+            if (!start || !dest) {
+                showError(errElem, "Silakan pilih titik awal dan tujuan terlebih dahulu.");
+                return;
+            }
+
+            const result = findShortestRoute(start, dest);
+            if (result.error) {
+                showError(errElem, result.error);
+                return;
+            }
+
+            ui.s2Start.value = start;
+            ui.s2Dest.value = dest;
+            if(errElem === ui.err2) ui.err2.classList.add('hidden');
+
+            renderResults(result);
+
+            if (sourceScreen === 1) {
+                switchScreen(ui.screenSearch, ui.screenResult);
+            }
+            
+            setTimeout(() => drawMap(result.legs), 500);
+        }
+
+        function showError(el, msg) {
+            el.innerText = msg;
+            if (el.id === 'errorText2') {
+                el.classList.remove('hidden');
+            } else {
+                el.classList.remove('opacity-0');
+                setTimeout(() => el.classList.add('opacity-0'), 3000);
+            }
+        }
+
+        let currentLegs = [];
+
+        function renderResults(result) {
+            currentLegs = result.legs;
+            const detailsDiv = document.getElementById('routeDetailsContent');
+            const visualDiv = document.getElementById('angkotVisuals');
+            
+            document.getElementById('fareEstimate').innerText = `Rp ${result.fare.toLocaleString('id-ID')}`;
+            let transits = result.legs.length - 1;
+            let transitText = transits > 0 ? `(Transit ${transits}x)` : "(Langsung)";
+            document.getElementById('fareDetailText').innerText = `${result.legs.length} Angkot ${transitText}`;
+
+            let detailHtml = `<ol class="list-decimal pl-4 space-y-5">`;
+            let visualHtml = ``;
+
+            result.legs.forEach((leg, index) => {
+                let isLast = index === result.legs.length - 1;
+                
+                detailHtml += `
+                    <li class="pl-2 relative">
+                        Naik <b class="text-brand-dark text-[15px]">${leg.route.name}</b> 
+                        <span class="inline-block mt-1 sm:mt-0 text-[10px] font-extrabold px-2 py-1 bg-white border border-gray-300 rounded-md text-gray-700 shadow-sm ml-0 sm:ml-2 uppercase tracking-wide">
+                            Warna ${leg.route.color}
+                        </span>
+                        <div class="mt-2 text-sm text-gray-800 bg-white/40 p-2.5 rounded-lg border border-white/50">
+                            Dari <b class="text-blue-700">${leg.from}</b> <br>
+                            Turun di <b class="text-red-700">${leg.to}</b>
+                            <div class="text-xs text-gray-600 mt-1">Arah angkot: menuju <b>${leg.route.stops[leg.route.stops.indexOf(leg.from) < leg.route.stops.indexOf(leg.to) ? leg.route.stops.length - 1 : 0]}</b>${getLegDistance(leg) ? ` · ±${(getLegDistance(leg) / 1000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} km lewat jalan` : ''}</div>
+                        </div>
+                        <div class="text-[11px] text-gray-500 mt-2 leading-relaxed">
+                            <span class="font-bold">Melewati:</span> ${leg.path.join(' → ')}
+                        </div>
+                    </li>`;
+
+                let fallbackStyle = `background-color: ${leg.route.colorHex};`;
+                let fallbackHtml = `<div class='w-full h-full flex flex-col items-center justify-center font-black text-center text-sm text-white px-2 shadow-inner' style='${fallbackStyle}; text-shadow: 0 1px 3px rgba(0,0,0,0.7);'>${leg.route.name}<br><span class='text-xs font-medium'>(${leg.route.color})</span></div>`;
+                
+                visualHtml += `
+                    <div class="flex-none w-56 h-40 bg-white rounded-2xl overflow-hidden shadow-md border-2 border-gray-100 relative snap-center flex flex-col group cursor-zoom-in focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-btn"
+                         role="button" tabindex="0" aria-label="Perbesar gambar ${leg.route.name}"
+                         onclick="openImageModal(${index})"
+                         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openImageModal(${index});}">
+                        <div class="flex-1 w-full bg-gray-200 relative overflow-hidden">
+                            <img src="${leg.route.image}" 
+                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                                 alt="${leg.route.name}"
+                                 onerror="this.onerror=null; this.outerHTML=\`${fallbackHtml}\`;" >
+                            <div class="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1.5 pointer-events-none">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-4.35-4.35M11 8v6M8 11h6M17 11a6 6 0 11-12 0 6 6 0 0112 0z"></path></svg>
+                            </div>
+                        </div>
+                        <div class="h-9 flex items-center justify-center bg-gray-50 text-[10px] uppercase font-black tracking-widest text-brand-dark border-t border-gray-200">
+                            Angkot ${index + 1}
+                        </div>
+                    </div>`;
+
+                if (!isLast) {
+                    visualHtml += `<div class="flex-none text-brand-dark/30 font-extrabold text-3xl">→</div>`;
+                }
+            });
+
+            detailHtml += `</ol>`;
+            detailsDiv.innerHTML = detailHtml;
+            visualDiv.innerHTML = visualHtml;
+            document.getElementById('screen-result').scrollTo(0,0);
+        }
+
+        // --- 6. GEOMETRI JALAN (rute mengikuti ruas jalan asli) ---
+        // data/route-geometry.json berisi:
+        //  - stops: koordinat halte yang sudah ditempelkan ke jalan utama
+        //  - segments["A|B"]: polyline jalan dari halte A ke halte B (sesuai arah)
+        // Dibuat oleh tools/generate-route-geometry.mjs (data OpenStreetMap via OSRM).
+        let roadData = { stops: {}, segments: {} };
+        const roadDataReady = fetch('data/route-geometry.json')
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d) roadData = d.segments ? { stops: d.stops || {}, segments: d.segments } : { stops: {}, segments: d }; })
+            .catch(() => {});
+        const liveSegmentCache = {};
+
+        function stopCoord(name) {
+            return (roadData.stops[name] && roadData.stops[name].c) || getMockCoord(name);
+        }
+
+        // Ambil ruas jalan antar dua halte; fallback ke OSRM langsung, lalu garis lurus.
+        async function getSegment(a, b) {
+            const key = `${a}|${b}`;
+            if (roadData.segments[key]) return roadData.segments[key].c;
+            if (liveSegmentCache[key]) return liveSegmentCache[key];
+            const p1 = stopCoord(a), p2 = stopCoord(b);
+            try {
+                const url = `https://router.project-osrm.org/route/v1/driving/${p1[1]},${p1[0]};${p2[1]},${p2[0]}?overview=full&geometries=geojson`;
+                const json = await (await fetch(url)).json();
+                if (json.code === 'Ok') {
+                    const c = json.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+                    liveSegmentCache[key] = c;
+                    return c;
+                }
+            } catch (e) { /* abaikan, pakai garis lurus */ }
+            return [p1, p2];
+        }
+
+        async function getLegGeometry(leg) {
+            let coords = [];
+            for (let i = 0; i < leg.path.length - 1; i++) {
+                const seg = await getSegment(leg.path[i], leg.path[i + 1]);
+                coords = coords.concat(i === 0 ? seg : seg.slice(1));
+            }
+            return coords.length ? coords : [stopCoord(leg.path[0])];
+        }
+
+        function getLegDistance(leg) {
+            let total = 0;
+            for (let i = 0; i < leg.path.length - 1; i++) {
+                const seg = roadData.segments[`${leg.path[i]}|${leg.path[i + 1]}`];
+                if (!seg) return null;
+                total += seg.d;
+            }
+            return total;
+        }
+
+        // Panah arah perjalanan di sepanjang polyline
+        function addDirectionArrows(coords, color, layer) {
+            if (!mapInstance || coords.length < 2) return;
+            const pts = coords.map(c => mapInstance.project(L.latLng(c), 16));
+            let total = 0;
+            for (let i = 1; i < pts.length; i++) total += pts[i].distanceTo(pts[i - 1]);
+            const spacing = Math.max(total / 8, 250);
+            let next = spacing / 2, acc = 0;
+            for (let i = 1; i < pts.length; i++) {
+                const segLen = pts[i].distanceTo(pts[i - 1]);
+                while (segLen > 0 && acc + segLen >= next) {
+                    const t = (next - acc) / segLen;
+                    const p = pts[i - 1].add(pts[i].subtract(pts[i - 1]).multiplyBy(t));
+                    const angle = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x) * 180 / Math.PI;
+                    L.marker(mapInstance.unproject(p, 16), {
+                        interactive: false,
+                        icon: L.divIcon({
+                            className: '',
+                            html: `<div style="transform:rotate(${angle}deg);width:16px;height:16px;display:flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M5 4l14 8-14 8 4-8z" fill="white" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/></svg></div>`,
+                            iconSize: [16, 16], iconAnchor: [8, 8]
+                        })
+                    }).addTo(layer);
+                    next += spacing;
+                }
+                acc += segLen;
+            }
+        }
+
+        // --- 6b. MODAL GAMBAR ANGKOT ---
+        const imgModal = {
+            el: document.getElementById('imageModal'),
+            img: document.getElementById('imageModalImg'),
+            fallback: document.getElementById('imageModalFallback'),
+            label: document.getElementById('imageModalLabel'),
+            title: document.getElementById('imageModalTitle'),
+            sub: document.getElementById('imageModalSub'),
+            prev: document.getElementById('imageModalPrev'),
+            next: document.getElementById('imageModalNext'),
+            index: 0
+        };
+
+        function showModalImage() {
+            const leg = currentLegs[imgModal.index];
+            if (!leg) return;
+            const total = currentLegs.length;
+            imgModal.label.textContent = total > 1 ? `Angkot ${imgModal.index + 1} dari ${total}` : 'Angkot';
+            imgModal.title.textContent = leg.route.name;
+            imgModal.sub.textContent = `Warna ${leg.route.color} · ${leg.from} → ${leg.to}`;
+            imgModal.prev.classList.toggle('hidden', total < 2);
+            imgModal.next.classList.toggle('hidden', total < 2);
+
+            imgModal.fallback.classList.add('hidden');
+            imgModal.fallback.classList.remove('flex');
+            imgModal.img.classList.remove('hidden');
+            imgModal.img.onerror = () => {
+                imgModal.img.classList.add('hidden');
+                imgModal.fallback.style.backgroundColor = leg.route.colorHex;
+                imgModal.fallback.textContent = `${leg.route.name} (${leg.route.color})`;
+                imgModal.fallback.classList.remove('hidden');
+                imgModal.fallback.classList.add('flex');
+            };
+            imgModal.img.alt = leg.route.name;
+            imgModal.img.src = leg.route.image;
+        }
+
+        function openImageModal(index) {
+            imgModal.index = index;
+            showModalImage();
+            imgModal.el.classList.remove('hidden');
+            imgModal.el.classList.add('flex');
+        }
+
+        function closeImageModal() {
+            imgModal.el.classList.add('hidden');
+            imgModal.el.classList.remove('flex');
+        }
+
+        function stepImageModal(delta) {
+            const total = currentLegs.length;
+            if (total < 2) return;
+            imgModal.index = (imgModal.index + delta + total) % total;
+            showModalImage();
+        }
+
+        document.addEventListener('keydown', e => {
+            if (imgModal.el.classList.contains('hidden')) return;
+            if (e.key === 'Escape') closeImageModal();
+            else if (e.key === 'ArrowLeft') stepImageModal(-1);
+            else if (e.key === 'ArrowRight') stepImageModal(1);
+        });
+
+        // --- 7. LEAFLET MAP ---
+        let mapInstance = null;
+        let routeLayers = L.layerGroup();
+        let drawToken = 0;
+
+        async function drawMap(legs) {
+            if (!mapInstance) {
+                mapInstance = L.map('map', { zoomControl: false, attributionControl: true });
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(mapInstance);
+                routeLayers.addTo(mapInstance);
+                mapInstance.setView(stopCoord(legs[0].from), 14);
+            }
+
+            const token = ++drawToken;
+            await roadDataReady;
+            const geometries = await Promise.all(legs.map(getLegGeometry));
+            if (token !== drawToken) return; // pencarian baru sudah dimulai
+
+            routeLayers.clearLayers();
+            let allBounds = null;
+
+            let makeIcon = (color, text) => L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div style="background:${color};width:22px;height:22px;border-radius:50%;border:2px solid white;box-shadow:0 3px 6px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:bold;">${text}</div>`,
+                iconSize: [22, 22], iconAnchor: [11, 11]
+            });
+
+            legs.forEach((leg, legIndex) => {
+                const coords = geometries[legIndex];
+                const isDashed = legIndex % 2 !== 0;
+
+                // Garis tepi (outline) agar rute kontras dengan peta
+                L.polyline(coords, { color: '#1f2937', weight: 10, opacity: 0.35, lineCap: 'round', lineJoin: 'round' }).addTo(routeLayers);
+                let polyline = L.polyline(coords, {
+                    color: leg.route.colorHex,
+                    weight: 6,
+                    opacity: 0.95,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                    dashArray: isDashed ? '10, 10' : null
+                }).addTo(routeLayers)
+                  .bindPopup(`<div class="text-xs"><b>${leg.route.name}</b><br>${leg.from} → ${leg.to}</div>`);
+
+                addDirectionArrows(coords, leg.route.colorHex, routeLayers);
+
+                // Halte yang dilewati
+                leg.path.slice(1, -1).forEach(stop => {
+                    L.circleMarker(stopCoord(stop), { radius: 5, color: leg.route.colorHex, weight: 3, fillColor: '#fff', fillOpacity: 1 })
+                        .addTo(routeLayers)
+                        .bindPopup(`<div class="text-xs">${stop}</div>`);
+                });
+
+                let startMarker = L.marker(stopCoord(leg.from), { icon: makeIcon('#1D4ED8', legIndex + 1), zIndexOffset: 1000 })
+                    .addTo(routeLayers)
+                    .bindPopup(`<div class="text-xs"><b>Naik Angkot ${legIndex+1}:</b><br>${leg.from}<br><span style="font-weight:500">Arah: ${leg.to}</span></div>`);
+
+                L.marker(stopCoord(leg.to), { icon: makeIcon('#B91C1C', 'X'), zIndexOffset: 1000 })
+                    .addTo(routeLayers)
+                    .bindPopup(`<div class="text-xs"><b>Turun:</b><br>${leg.to}</div>`);
+
+                if (legIndex === 0) startMarker.openPopup();
+                const b = polyline.getBounds();
+                allBounds = allBounds ? allBounds.extend(b) : L.latLngBounds(b.getSouthWest(), b.getNorthEast());
+            });
+
+            if (allBounds) {
+                mapInstance.invalidateSize();
+                mapInstance.fitBounds(allBounds, { padding: [40, 40] });
+            }
+        }
+    </script>
+</body>
+</html>
