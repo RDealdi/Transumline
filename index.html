@@ -80,6 +80,20 @@
         .cb-list { overscroll-behavior: contain; }
         .cb-list li[aria-selected="true"] { background: rgba(162, 183, 154, 0.55); }
 
+        /* Slider geser Visual Angkot */
+        .visual-slider { -webkit-appearance: none; appearance: none; height: 8px; border-radius: 999px; background: rgba(60, 82, 54, 0.3); outline: none; cursor: pointer; }
+        .visual-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #3C5236; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+        .visual-slider::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #3C5236; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+        .visual-slider:focus-visible { box-shadow: 0 0 0 4px rgba(60, 82, 54, 0.35); }
+        #angkotVisuals.dragging { scroll-snap-type: none; }
+
+        /* Titik lokasi pengguna */
+        .me-dot { position: relative; width: 18px; height: 18px; }
+        .me-dot::before { content: ''; position: absolute; inset: 0; border-radius: 50%; background: #2563EB; border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,0.5); }
+        .me-dot::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; background: rgba(37, 99, 235, 0.35); animation: me-pulse 2s ease-out infinite; }
+        @keyframes me-pulse { 0% { transform: scale(0.6); opacity: 1; } 100% { transform: scale(1.6); opacity: 0; } }
+        @media (prefers-reduced-motion: reduce) { .me-dot::after { animation: none; } }
+
         /* Modal gambar angkot */
         @keyframes modal-pop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
         .modal-pop { animation: modal-pop 0.2s ease-out; }
@@ -146,6 +160,14 @@
                         <!-- 1. Map Card -->
                         <div class="w-full h-[35vh] lg:h-[50vh] min-h-[250px] bg-gray-200 rounded-[2rem] overflow-hidden shadow-2xl border-[5px] border-brand-light relative z-0">
                             <div id="map"></div>
+
+                            <!-- Tombol lokasi saya -->
+                            <button type="button" id="locateBtn" onclick="locateMe()" aria-label="Tampilkan lokasi saya"
+                                    class="absolute bottom-3 right-3 z-[1000] flex items-center gap-2 bg-white text-brand-btn font-bold text-sm rounded-full pl-3 pr-4 py-2.5 shadow-lg border border-gray-200 active:scale-95 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-btn/40">
+                                <svg id="locateIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5" stroke-width="2.5"></circle><path stroke-linecap="round" stroke-width="2.5" d="M12 2v3m0 14v3M2 12h3m14 0h3"></path><circle cx="12" cy="12" r="8" stroke-width="2.5"></circle></svg>
+                                <span id="locateLabel">Lokasi Saya</span>
+                            </button>
+                            <div id="locateStatus" role="status" aria-live="polite" class="hidden absolute top-3 left-3 right-3 z-[1000] mx-auto max-w-sm bg-white/95 text-gray-800 text-xs md:text-sm font-semibold rounded-xl px-3 py-2 shadow-lg text-center"></div>
                         </div>
 
                         <!-- 3. Route Textual Details -->
@@ -165,7 +187,17 @@
                             <div id="angkotVisuals" class="flex flex-row overflow-x-auto gap-4 items-center p-2 snap-x hide-scrollbar">
                                 <!-- Content Injected via JS -->
                             </div>
-                            <p class="text-center text-xs font-semibold text-brand-dark mt-2">Ketuk gambar untuk memperbesar</p>
+                            <!-- Slider geser horizontal (muncul otomatis jika gambar melebihi lebar kartu) -->
+                            <div id="visualSliderWrap" class="hidden items-center gap-3 mt-3 px-2">
+                                <button type="button" id="visualPrev" aria-label="Geser ke kiri" class="flex-none bg-brand-btn text-white rounded-full p-1.5 active:scale-90 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-btn">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M15 19l-7-7 7-7"></path></svg>
+                                </button>
+                                <input id="visualSlider" type="range" min="0" max="100" value="0" step="1" aria-label="Geser visual angkot" class="visual-slider flex-1">
+                                <button type="button" id="visualNext" aria-label="Geser ke kanan" class="flex-none bg-brand-btn text-white rounded-full p-1.5 active:scale-90 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-btn">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M9 5l7 7-7 7"></path></svg>
+                                </button>
+                            </div>
+                            <p class="text-center text-xs font-semibold text-brand-dark mt-2">Geser slider atau ketuk gambar untuk memperbesar</p>
                         </div>
                     </div>
 
@@ -178,6 +210,8 @@
                             <div id="fareDetailText" class="text-sm md:text-base font-bold text-brand-dark bg-white/40 px-4 py-1.5 rounded-full mt-2 inline-block shadow-sm">
                                 0 Angkot
                             </div>
+                            <div id="fareBreakdown" class="w-full mt-4 text-left text-sm text-brand-dark font-semibold space-y-1.5"></div>
+                            <p id="fareNote" class="text-[11px] text-brand-dark/80 font-medium mt-3 leading-snug"></p>
                         </div>
 
                         <!-- 2. Quick Update Card -->
@@ -574,6 +608,8 @@
         }
 
         function goBackToSearch() {
+            stopLocating();
+            setLocateStatus('');
             switchScreen(ui.screenResult, ui.screenSearch);
             ui.err1.classList.add('opacity-0');
         }
@@ -638,11 +674,57 @@
                     path: getSubPath(route.stops, fromStop, toStop)
                 });
             }
-            return { legs: legs, fare: legs.length * 5000 };
+            legs.forEach(leg => {
+                const d = legDistanceM(leg);
+                leg.distance = d.m;
+                leg.distanceExact = d.exact;
+                leg.fare = legFare(d.m);
+            });
+            return {
+                legs: legs,
+                fare: legs.reduce((s, l) => s + l.fare, 0),
+                distance: legs.reduce((s, l) => s + l.distance, 0)
+            };
         }
 
+        // --- 4b. TARIF BERDASARKAN JARAK ---
+        // Ubah angka di sini untuk menyesuaikan tarif.
+        const FARE = {
+            base: 4000,    // tarif dasar per angkot (Rp)
+            baseKm: 3,     // jarak yang sudah termasuk tarif dasar (km)
+            perKm: 500,    // tambahan per km setelah jarak dasar (Rp)
+            round: 500,    // pembulatan ke atas (Rp)
+            detour: 1.3    // pengali jarak garis lurus -> jarak jalan (jika data jalan tidak tersedia)
+        };
+
+        function haversine(a, b) {
+            const R = 6371000, rad = Math.PI / 180;
+            const dLat = (b[0] - a[0]) * rad, dLng = (b[1] - a[1]) * rad;
+            const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dLng / 2) ** 2;
+            return 2 * R * Math.asin(Math.sqrt(h));
+        }
+
+        // Jarak satu angkot: pakai data jalan asli bila ada, jika tidak pakai garis lurus x faktor kelokan.
+        function legDistanceM(leg) {
+            const road = getLegDistance(leg);
+            if (road != null) return { m: road, exact: true };
+            let straight = 0;
+            for (let i = 0; i < leg.path.length - 1; i++) straight += haversine(stopCoord(leg.path[i]), stopCoord(leg.path[i + 1]));
+            return { m: straight * FARE.detour, exact: false };
+        }
+
+        function legFare(meters) {
+            const km = meters / 1000;
+            const raw = FARE.base + Math.max(0, km - FARE.baseKm) * FARE.perKm;
+            return Math.ceil(raw / FARE.round) * FARE.round;
+        }
+
+        const fmtRp = n => `Rp ${n.toLocaleString('id-ID')}`;
+        const fmtKm = m => (m / 1000).toLocaleString('id-ID', { maximumFractionDigits: 1 });
+
         // --- 5. LOGIKA UI ---
-        function processSearch(sourceScreen) {
+        async function processSearch(sourceScreen) {
+            await roadDataReady; // pastikan data jalan sudah dimuat agar jarak & tarif akurat
             let start = sourceScreen === 1 ? ui.s1Start.value : ui.s2Start.value;
             let dest = sourceScreen === 1 ? ui.s1Dest.value : ui.s2Dest.value;
             let errElem = sourceScreen === 1 ? ui.err1 : ui.err2;
@@ -688,10 +770,22 @@
             const detailsDiv = document.getElementById('routeDetailsContent');
             const visualDiv = document.getElementById('angkotVisuals');
             
-            document.getElementById('fareEstimate').innerText = `Rp ${result.fare.toLocaleString('id-ID')}`;
+            document.getElementById('fareEstimate').innerText = fmtRp(result.fare);
             let transits = result.legs.length - 1;
             let transitText = transits > 0 ? `(Transit ${transits}x)` : "(Langsung)";
-            document.getElementById('fareDetailText').innerText = `${result.legs.length} Angkot ${transitText}`;
+            document.getElementById('fareDetailText').innerText = `${result.legs.length} Angkot ${transitText} · ±${fmtKm(result.distance)} km`;
+
+            document.getElementById('fareBreakdown').innerHTML = result.legs.map((leg, i) => `
+                <div class="flex items-start justify-between gap-3 bg-white/40 rounded-xl px-3 py-2">
+                    <div class="min-w-0">
+                        <div class="truncate">Angkot ${i + 1}: ${escHtml(leg.route.name)}</div>
+                        <div class="text-xs font-medium text-brand-dark/80">±${fmtKm(leg.distance)} km</div>
+                    </div>
+                    <div class="flex-none font-extrabold">${fmtRp(leg.fare)}</div>
+                </div>`).join('');
+            const allExact = result.legs.every(l => l.distanceExact);
+            document.getElementById('fareNote').textContent =
+                `Estimasi dari jarak ${allExact ? 'lewat jalan' : 'perkiraan (garis lurus x ' + FARE.detour + ')'}: ${fmtRp(FARE.base)} untuk ${FARE.baseKm} km pertama, lalu ${fmtRp(FARE.perKm)} per km, dibulatkan ke ${fmtRp(FARE.round)}. Tarif sebenarnya bisa berbeda.`;
 
             let detailHtml = `<ol class="list-decimal pl-4 space-y-5">`;
             let visualHtml = ``;
@@ -708,7 +802,7 @@
                         <div class="mt-2 text-sm text-gray-800 bg-white/40 p-2.5 rounded-lg border border-white/50">
                             Dari <b class="text-blue-700">${leg.from}</b> <br>
                             Turun di <b class="text-red-700">${leg.to}</b>
-                            <div class="text-xs text-gray-600 mt-1">Arah angkot: menuju <b>${leg.route.stops[leg.route.stops.indexOf(leg.from) < leg.route.stops.indexOf(leg.to) ? leg.route.stops.length - 1 : 0]}</b>${getLegDistance(leg) ? ` · ±${(getLegDistance(leg) / 1000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} km lewat jalan` : ''}</div>
+                            <div class="text-xs text-gray-600 mt-1">Arah angkot: menuju <b>${leg.route.stops[leg.route.stops.indexOf(leg.from) < leg.route.stops.indexOf(leg.to) ? leg.route.stops.length - 1 : 0]}</b> · ±${fmtKm(leg.distance)} km ${leg.distanceExact ? 'lewat jalan' : '(perkiraan)'} · ${fmtRp(leg.fare)}</div>
                         </div>
                         <div class="text-[11px] text-gray-500 mt-2 leading-relaxed">
                             <span class="font-bold">Melewati:</span> ${leg.path.join(' → ')}
@@ -745,8 +839,36 @@
             detailHtml += `</ol>`;
             detailsDiv.innerHTML = detailHtml;
             visualDiv.innerHTML = visualHtml;
+            visualDiv.scrollLeft = 0;
+            syncVisualSlider();
             document.getElementById('screen-result').scrollTo(0,0);
         }
+
+        // --- 5b. SLIDER GESER VISUAL ANGKOT ---
+        const visualEl = document.getElementById('angkotVisuals');
+        const sliderEl = document.getElementById('visualSlider');
+        const sliderWrap = document.getElementById('visualSliderWrap');
+
+        function syncVisualSlider() {
+            const maxScroll = visualEl.scrollWidth - visualEl.clientWidth;
+            const overflow = maxScroll > 4;
+            sliderWrap.classList.toggle('hidden', !overflow);
+            sliderWrap.classList.toggle('flex', overflow);
+            if (overflow) sliderEl.value = Math.round((visualEl.scrollLeft / maxScroll) * 100);
+        }
+
+        sliderEl.addEventListener('input', () => {
+            const maxScroll = visualEl.scrollWidth - visualEl.clientWidth;
+            visualEl.scrollLeft = (sliderEl.value / 100) * maxScroll;
+        });
+        sliderEl.addEventListener('pointerdown', () => visualEl.classList.add('dragging'));
+        ['pointerup', 'pointercancel', 'blur'].forEach(ev => sliderEl.addEventListener(ev, () => visualEl.classList.remove('dragging')));
+        visualEl.addEventListener('scroll', syncVisualSlider, { passive: true });
+        document.getElementById('visualPrev').addEventListener('click', () => visualEl.scrollBy({ left: -240, behavior: 'smooth' }));
+        document.getElementById('visualNext').addEventListener('click', () => visualEl.scrollBy({ left: 240, behavior: 'smooth' }));
+        // Hitung ulang saat layar hasil muncul / ukuran berubah
+        if (window.ResizeObserver) new ResizeObserver(syncVisualSlider).observe(visualEl);
+        window.addEventListener('resize', syncVisualSlider);
 
         // --- 6. GEOMETRI JALAN (rute mengikuti ruas jalan asli) ---
         // data/route-geometry.json berisi:
@@ -896,6 +1018,101 @@
         let mapInstance = null;
         let routeLayers = L.layerGroup();
         let drawToken = 0;
+
+        // --- 7b. LOKASI SAYA ---
+        let meLayer = null, meMarker = null, meCircle = null;
+        let watchId = null, firstFix = true, statusTimer = null;
+        const locateBtn = document.getElementById('locateBtn');
+        const locateLabel = document.getElementById('locateLabel');
+        const locateStatus = document.getElementById('locateStatus');
+
+        function setLocateStatus(msg, hideAfterMs) {
+            clearTimeout(statusTimer);
+            if (!msg) { locateStatus.classList.add('hidden'); return; }
+            locateStatus.textContent = msg;
+            locateStatus.classList.remove('hidden');
+            if (hideAfterMs) statusTimer = setTimeout(() => locateStatus.classList.add('hidden'), hideAfterMs);
+        }
+
+        function setLocateState(state) { // 'idle' | 'searching' | 'active'
+            locateLabel.textContent = state === 'searching' ? 'Mencari...' : state === 'active' ? 'Ke Lokasi Saya' : 'Lokasi Saya';
+            locateBtn.classList.toggle('text-blue-700', state === 'active');
+            locateBtn.classList.toggle('text-brand-btn', state !== 'active');
+            locateBtn.disabled = state === 'searching';
+        }
+
+        // Halte pada rute aktif yang paling dekat dengan posisi pengguna
+        function nearestRouteStop(latlng) {
+            let best = null;
+            currentLegs.forEach(leg => leg.path.forEach(name => {
+                const c = stopCoord(name);
+                const d = haversine([latlng.lat, latlng.lng], c);
+                if (!best || d < best.d) best = { name, c, d };
+            }));
+            return best;
+        }
+
+        function fmtDist(m) { return m >= 1000 ? `${fmtKm(m)} km` : `${Math.round(m)} m`; }
+
+        function onPosition(pos) {
+            const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+            const acc = pos.coords.accuracy || 0;
+            if (!meLayer) {
+                meLayer = L.layerGroup().addTo(mapInstance);
+                meCircle = L.circle(latlng, { radius: acc, color: '#2563EB', weight: 1, fillColor: '#2563EB', fillOpacity: 0.12, interactive: false }).addTo(meLayer);
+                meMarker = L.marker(latlng, {
+                    zIndexOffset: 2000,
+                    icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] })
+                }).addTo(meLayer);
+            } else {
+                meMarker.setLatLng(latlng);
+                meCircle.setLatLng(latlng).setRadius(acc);
+            }
+
+            const near = nearestRouteStop(latlng);
+            meMarker.bindPopup(`<div class="text-xs"><b>Lokasi Anda</b><br>Akurasi ±${Math.round(acc)} m${near ? `<br>Halte rute terdekat: <b>${escHtml(near.name)}</b> (±${fmtDist(near.d)})` : ''}</div>`);
+
+            setLocateState('active');
+            if (firstFix) {
+                firstFix = false;
+                if (near) mapInstance.fitBounds(L.latLngBounds([latlng, near.c]), { padding: [60, 60], maxZoom: 16 });
+                else mapInstance.setView(latlng, 16);
+                meMarker.openPopup();
+                setLocateStatus(near ? `Halte rute terdekat: ${near.name} (±${fmtDist(near.d)})` : 'Lokasi Anda ditemukan.', 5000);
+            }
+        }
+
+        function onPositionError(err) {
+            stopLocating();
+            const msg = err.code === 1 ? 'Izin lokasi ditolak. Aktifkan izin lokasi untuk situs ini di pengaturan browser.'
+                      : err.code === 3 ? 'Waktu pencarian lokasi habis. Coba lagi di tempat terbuka.'
+                      : 'Lokasi tidak tersedia saat ini. Pastikan GPS/lokasi perangkat aktif.';
+            setLocateStatus(msg, 6000);
+        }
+
+        function locateMe() {
+            if (!mapInstance) { setLocateStatus('Peta belum siap, tunggu sebentar.', 3000); return; }
+            if (!navigator.geolocation) { setLocateStatus('Browser ini tidak mendukung fitur lokasi.', 4000); return; }
+            if (!window.isSecureContext) { setLocateStatus('Fitur lokasi hanya berfungsi di halaman HTTPS atau localhost.', 5000); return; }
+
+            // Sudah aktif: arahkan peta ke posisi terakhir
+            if (watchId !== null && meMarker) {
+                mapInstance.setView(meMarker.getLatLng(), Math.max(mapInstance.getZoom(), 16));
+                meMarker.openPopup();
+                return;
+            }
+            firstFix = true;
+            setLocateState('searching');
+            setLocateStatus('Mencari lokasi Anda...');
+            watchId = navigator.geolocation.watchPosition(onPosition, onPositionError, { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
+        }
+
+        function stopLocating() {
+            if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+            if (meLayer && mapInstance) { mapInstance.removeLayer(meLayer); }
+            meLayer = meMarker = meCircle = null;
+            setLocateState('idle');
+        }
 
         async function drawMap(legs) {
             if (!mapInstance) {
